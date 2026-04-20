@@ -1,0 +1,17 @@
+name: BlockParty
+version: '1.0-SNAPSHOT'
+main: me.unprankable.blockparty.BlockParty
+api-version: '1.21'
+prefix: BlockParty
+authors: [ Unprankable ]
+description: A fun mini game where you try to be the last one standing
+website: Unprankable.bendinghub.net
+depend: [ WorldEdit ]
+commands:
+  blockparty:
+    description: "Create, delete and manage blockparty games"
+    usage: "/blockparty <create|delete|edit|help|info|join|leave|list|start|stop|stats>"
+    aliases: [ bp ]
+
+
+

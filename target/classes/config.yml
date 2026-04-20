@@ -1,0 +1,91 @@
+# BlockParty Configuration File
+
+# Game Settings
+game:
+  # Initial time (in seconds) players have to reach the selected block in round 1
+  initial_round_time: 15
+  
+  # Minimum time (in seconds) - game won't go faster than this
+  minimum_round_time: 3
+  
+  # How many seconds to decrease per round (increases difficulty)
+  time_decrease_per_round: 1
+  
+  # Delay (in ticks) between rounds (20 ticks = 1 second)
+  delay_between_rounds: 40
+  
+  # Countdown time (in seconds) before game starts
+  preparation_time: 5
+
+# Default region settings
+regions:
+  # Default minimum players required to start a game
+  default_min_players: 2
+
+# Database Settings
+database:
+  # Database type (currently only 'sqlite' is supported)
+  type: sqlite
+  
+  # Database file name (stored in plugins/BlockParty/)
+  filename: blockparty_stats.db
+
+# Stats Tracking
+stats:
+  # Enable or disable player statistics tracking
+  enabled: true
+  
+  # Track eliminations
+  track_eliminations: true
+  
+  # Track best rounds
+  track_best_rounds: true
+
+# Messages
+messages:
+  # Game start message
+  game_start: "BlockParty game starting in %time% seconds!"
+  
+  # Round announcement
+  round_announcement: "--- Round %round% ---"
+  
+  # Selected block message
+  selected_block: "Selected block: %block%"
+  
+  # Time warning
+  time_warning: "Get to a %block% block! You have %time% seconds!"
+  
+  # Blocks removed message
+  blocks_removed: "Blocks removed!"
+  
+  # Player eliminated
+  player_eliminated: "%player% was eliminated!"
+  
+  # Game over
+  game_over: "=== GAME OVER ==="
+  
+  # Winner announcement
+  winner: "🏆 Last Player Standing: %player%"
+
+# Logging
+logging:
+  # Enable debug logging
+  debug: true
+  
+  # Log all player actions (join, leave, eliminated)
+  log_player_actions: true
+  
+  # Log game statistics
+  log_game_stats: true
+
+# Features
+features:
+  # Allow players to join mid-game
+  allow_mid_game_join: false
+  
+  # Restore blocks after game ends
+  restore_blocks_after_game: true
+  
+  # Teleport players to region on join
+  teleport_on_join: false
+
