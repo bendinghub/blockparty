@@ -11,10 +11,10 @@ import java.util.List;
 public class Help {
     public static boolean execute(CommandSender sender, Command command, String label, String[] args){
         sender.sendMessage(ChatColor.GOLD + "====== BlockParty Help ======");
-        sender.sendMessage(ChatColor.YELLOW + "/blockparty create <name> [minPlayers]" + ChatColor.RESET + " - Create a new region and auto-generate block list from selection");
+        sender.sendMessage(ChatColor.YELLOW + "/blockparty create <name> [minPlayers] [preservePattern]" + ChatColor.RESET + " - Create a new region and auto-generate block list from selection");
         sender.sendMessage(ChatColor.YELLOW + "/blockparty delete <name>" + ChatColor.RESET + " - Delete an existing region");
         sender.sendMessage(ChatColor.YELLOW + "/blockparty edit <name> <option> <value>" + ChatColor.RESET + " - Edit one region option at a time");
-        sender.sendMessage(ChatColor.GRAY + "  Options: minPlayers, blocks, name");
+        sender.sendMessage(ChatColor.GRAY + "  Options: minPlayers, blocks, name, preservePattern");
         sender.sendMessage(ChatColor.YELLOW + "/blockparty list" + ChatColor.RESET + " - List all BlockParty regions");
         sender.sendMessage(ChatColor.YELLOW + "/blockparty info <name>" + ChatColor.RESET + " - View detailed information about a region");
         sender.sendMessage(ChatColor.YELLOW + "/blockparty join <name>" + ChatColor.RESET + " - Join a BlockParty region");

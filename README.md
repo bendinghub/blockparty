@@ -56,7 +56,7 @@ Alias: `/bp`
 
 ### Region Management
 
-- `/blockparty create <region_name> [minPlayers]` - Create a region from your current WorldEdit selection
+- `/blockparty create <region_name> [minPlayers] [preservePattern]` - Create a region from your current WorldEdit selection
 - `/blockparty edit <region_name> <option> <value>` - Edit a region option
 - `/blockparty delete <region_name>` - Delete a region
 - `/blockparty info <region_name>` - Show region details
@@ -113,6 +113,7 @@ The default config is generated at `plugins/BlockParty/config.yml`.
 - `name` - Rename the region
 - `minPlayers` - Change the minimum player requirement
 - `blocks` - Replace the saved block list with a comma-separated list
+- `preservePattern` - `true`/`false`; when true, rounds keep the same tile layout pattern while remapping materials each round
 
 ## Troubleshooting
 

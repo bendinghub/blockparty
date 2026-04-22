@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -47,8 +48,11 @@ public class GameSession {
     private int waitingSecondsRemaining = ConfigManager.getWaitingForPlayersTime();
     private boolean roundsStarted = false;
     private boolean enforceMinPlayers = true;
+    private boolean preservePattern = false;
     private boolean isActive = false;
     private Map<String, Integer> savedBlocks; // Save original block data for restoration
+    private final Map<String, Integer> preservedPatternSlots = new HashMap<>();
+    private int preservedPatternPaletteSize = 0;
     private final Map<UUID, ItemStack[]> originalHotbars = new HashMap<>();
     private final Set<UUID> matchParticipants = new LinkedHashSet<>();
     private final Map<UUID, String> matchParticipantNames = new HashMap<>();
@@ -95,6 +99,11 @@ public class GameSession {
             if (minPlayersObj instanceof Number) {
                 this.minPlayers = ((Number) minPlayersObj).intValue();
             }
+
+            Object preservePatternObj = regionData.get("preservePattern");
+            if (preservePatternObj instanceof Boolean) {
+                this.preservePattern = (Boolean) preservePatternObj;
+            }
         }
     }
 
@@ -113,6 +122,8 @@ public class GameSession {
         roundsStarted = false;
         waitingSecondsRemaining = ConfigManager.getWaitingForPlayersTime();
         enforceMinPlayers = !skipWaiting;
+        preservedPatternSlots.clear();
+        preservedPatternPaletteSize = 0;
         BlockParty.getInstance().debugLog("Starting game session for region: " + regionName);
 
         // Snapshot all participants so stats include eliminated/offline players too.
@@ -435,10 +446,65 @@ public class GameSession {
             return;
         }
 
+        if (preservePattern) {
+            setFloorBlocksWithPreservedPattern(world, minX, maxX, y, minZ, maxZ, materials);
+            return;
+        }
+
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
                 Material randomMaterial = materials.get(RANDOM.nextInt(materials.size()));
                 world.getBlockAt(x, y, z).setType(randomMaterial, false);
+            }
+        }
+    }
+
+    private void setFloorBlocksWithPreservedPattern(org.bukkit.World world, int minX, int maxX, int y, int minZ, int maxZ, List<Material> materials) {
+        ensurePatternSlots(world, minX, maxX, y, minZ, maxZ, materials);
+
+        // Preserve slot layout and only randomize which material each slot index maps to this round.
+        List<Material> shuffledMaterials = new ArrayList<>(materials);
+        Collections.shuffle(shuffledMaterials, RANDOM);
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                String key = x + "," + z;
+                int index = preservedPatternSlots.getOrDefault(key, 0);
+                Material mappedMaterial = shuffledMaterials.get(Math.floorMod(index, shuffledMaterials.size()));
+                world.getBlockAt(x, y, z).setType(mappedMaterial, false);
+            }
+        }
+    }
+
+    private void ensurePatternSlots(org.bukkit.World world, int minX, int maxX, int y, int minZ, int maxZ, List<Material> materials) {
+        int paletteSize = materials.size();
+        if (paletteSize <= 0) {
+            return;
+        }
+
+        int expectedSize = (maxX - minX + 1) * (maxZ - minZ + 1);
+        if (!preservedPatternSlots.isEmpty() && preservedPatternPaletteSize == paletteSize && preservedPatternSlots.size() == expectedSize) {
+            return;
+        }
+
+        preservedPatternSlots.clear();
+        preservedPatternPaletteSize = paletteSize;
+
+        Map<Material, Integer> materialToIndex = new HashMap<>();
+        for (int i = 0; i < materials.size(); i++) {
+            materialToIndex.putIfAbsent(materials.get(i), i);
+        }
+
+        // Use the current floor at game start as the fixed slot layout.
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                Material floorMaterial = world.getBlockAt(x, y, z).getType();
+                Integer slotIndex = materialToIndex.get(floorMaterial);
+                if (slotIndex == null) {
+                    // Deterministic fallback keeps unknown blocks stable across rounds.
+                    slotIndex = Math.floorMod((x * 73428767) ^ (z * 912931), paletteSize);
+                }
+                preservedPatternSlots.put(x + "," + z, slotIndex);
             }
         }
     }
@@ -591,6 +657,8 @@ public class GameSession {
          // Fully tear down the session and remove all players from the region state.
          GameManager.finishGameSession(regionName);
          GameManager.clearRegion(regionName);
+         preservedPatternSlots.clear();
+         preservedPatternPaletteSize = 0;
          originalHotbars.clear();
  
          if (gameTask != null) {

@@ -82,6 +82,13 @@ public class Info {
                 sender.sendMessage(ChatColor.YELLOW + "Minimum Players: " + ChatColor.RESET + "2 (default)");
             }
 
+            Object preservePatternObj = regionData.get("preservePattern");
+            if (preservePatternObj != null) {
+                sender.sendMessage(ChatColor.YELLOW + "Preserve Pattern: " + ChatColor.RESET + preservePatternObj.toString());
+            } else {
+                sender.sendMessage(ChatColor.YELLOW + "Preserve Pattern: " + ChatColor.RESET + "false (default)");
+            }
+
             sender.sendMessage(ChatColor.YELLOW + "End Condition: " + ChatColor.RESET + "Last player standing");
 
             sender.sendMessage(ChatColor.GOLD + "==============================");

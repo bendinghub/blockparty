@@ -39,7 +39,10 @@ public class Edit {
             return StringUtil.copyPartialMatches(args[1], RegionManager.getRegionNames(), new ArrayList<>());
         }
         if (args.length == 3) {
-            return StringUtil.copyPartialMatches(args[2], java.util.List.of("minPlayers", "blocks", "name"), new ArrayList<>());
+            return StringUtil.copyPartialMatches(args[2], java.util.List.of("minPlayers", "blocks", "name", "preservePattern"), new ArrayList<>());
+        }
+        if (args.length == 4 && args[2].equalsIgnoreCase("preservePattern")) {
+            return StringUtil.copyPartialMatches(args[3], java.util.List.of("true", "false"), new ArrayList<>());
         }
         return Collections.emptyList();
     }

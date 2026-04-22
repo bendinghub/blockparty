@@ -32,24 +32,32 @@ public class RegionManager {
     }
 
     public static boolean createRegion(String name, Region region){
-        return createRegion(name, region, 2);
+        return createRegion(name, region, 2, false);
     }
 
     public static boolean createRegion(String name, Region region, int minPlayers){
+        return createRegion(name, region, minPlayers, false);
+    }
+
+    public static boolean createRegion(String name, Region region, int minPlayers, boolean preservePattern){
         List<String> blocks = collectRegionBlocks(region);
         if (blocks.isEmpty()) {
             BlockParty.getInstance().errorLog("Failed to collect blocks for region '" + name + "'. Region may contain only air or an invalid world.");
             return false;
         }
-        return createRegion(name, region, blocks, minPlayers);
+        return createRegion(name, region, blocks, minPlayers, preservePattern);
     }
 
 
     public static boolean createRegion(String name, Region region, List<String> blocks){
-        return createRegion(name, region, blocks, 2);
+        return createRegion(name, region, blocks, 2, false);
     }
 
     public static boolean createRegion(String name, Region region, List<String> blocks, int minPlayers){
+        return createRegion(name, region, blocks, minPlayers, false);
+    }
+
+    public static boolean createRegion(String name, Region region, List<String> blocks, int minPlayers, boolean preservePattern){
         Map<String, Object> regionData = new LinkedHashMap<>();
         regionData.put("name", name);
         regionData.put("world", WorldEditHook.getWorldName(region));
@@ -57,6 +65,7 @@ public class RegionManager {
         regionData.put("pos2", WorldEditHook.getSecondPosition(region));
         regionData.put("blocks", blocks.isEmpty() ? new ArrayList<>() : blocks);
         regionData.put("minPlayers", minPlayers);
+        regionData.put("preservePattern", preservePattern);
         return writeRegionData(name, regionData);
     }
 
@@ -102,6 +111,19 @@ public class RegionManager {
                     }
                 }
                 regionData.put("blocks", blocks);
+                return writeRegionData(regionName, regionData);
+            }
+            case "preservepattern" -> {
+                String normalizedValue = value.trim().toLowerCase();
+                Boolean parsedValue = switch (normalizedValue) {
+                    case "true", "yes", "on", "1" -> true;
+                    case "false", "no", "off", "0" -> false;
+                    default -> null;
+                };
+                if (parsedValue == null) {
+                    return false;
+                }
+                regionData.put("preservePattern", parsedValue);
                 return writeRegionData(regionName, regionData);
             }
             default -> {
