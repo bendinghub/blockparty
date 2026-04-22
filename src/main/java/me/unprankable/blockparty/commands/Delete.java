@@ -1,13 +1,17 @@
 package me.unprankable.blockparty.commands;
 
 import me.unprankable.blockparty.BlockParty;
+import me.unprankable.blockparty.managers.RegionManager;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.util.StringUtil;
 
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
 
 public class Delete {
     public static boolean execute(CommandSender sender, Command command, String label, String[] args){
@@ -36,5 +40,12 @@ public class Delete {
             BlockParty.getInstance().errorLog("Failed to delete region file: " + regionFile.getAbsolutePath());
             return false;
         }
+    }
+
+    public static java.util.List<String> tabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length == 2) {
+            return StringUtil.copyPartialMatches(args[1], RegionManager.getRegionNames(), new ArrayList<>());
+        }
+        return Collections.emptyList();
     }
 }

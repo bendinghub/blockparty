@@ -45,8 +45,12 @@ public class List {
             sender.sendMessage(ChatColor.YELLOW + "• " + ChatColor.RESET + regionName);
         }
         sender.sendMessage(ChatColor.GOLD + "===================================");
-        
+
         BlockParty.getInstance().debugLog("List command executed by " + sender.getName() + " - found " + regionNames.size() + " regions");
         return true;
+    }
+
+    public static java.util.List<String> tabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        return Collections.emptyList();
     }
 }

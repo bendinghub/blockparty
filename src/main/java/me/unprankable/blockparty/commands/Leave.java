@@ -7,6 +7,9 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
+import java.util.Collections;
+import java.util.List;
+
 public class Leave {
     public static boolean execute(CommandSender sender, Command command, String label, String[] args){
         if (!(sender instanceof Player)){
@@ -29,5 +32,9 @@ public class Leave {
         sender.sendMessage(ChatColor.GREEN + "You left region '" + currentRegion + "'.");
         BlockParty.getInstance().debugLog("Player " + player.getName() + " left region: " + currentRegion);
         return true;
+    }
+
+    public static List<String> tabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        return Collections.emptyList();
     }
 }

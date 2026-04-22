@@ -3,12 +3,16 @@ package me.unprankable.blockparty.managers;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import me.unprankable.blockparty.BlockParty;
+import me.unprankable.blockparty.utils.MaterialUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitTask;
+import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.TextComponent;
 
 import java.io.File;
 import java.io.FileReader;
@@ -27,17 +31,25 @@ import java.util.UUID;
 public class GameSession {
     private static final Gson GSON = new GsonBuilder().create();
     private static final Random RANDOM = new Random();
+    private static final Map<UUID, ItemStack[]> pendingHotbarRestores = new HashMap<>();
 
     private final String regionName;
     private List<String> blockTypes;
+    private int minPlayers = 2;
     private int pos1x, pos1y, pos1z;
     private int pos2x, pos2y, pos2z;
     private String worldName;
     private BukkitTask gameTask;
+    private BukkitTask waitingTask;
+    private BukkitTask prepTask;
+    private BukkitTask eliminationTask;
     private int roundNumber = 0;
-    private int maxRounds = 0;
+    private int waitingSecondsRemaining = ConfigManager.getWaitingForPlayersTime();
+    private boolean roundsStarted = false;
+    private boolean enforceMinPlayers = true;
     private boolean isActive = false;
     private Map<String, Integer> savedBlocks; // Save original block data for restoration
+    private final Map<UUID, ItemStack[]> originalHotbars = new HashMap<>();
     private final Set<UUID> matchParticipants = new LinkedHashSet<>();
     private final Map<UUID, String> matchParticipantNames = new HashMap<>();
 
@@ -79,13 +91,18 @@ public class GameSession {
                 }
             }
 
-            // Parse numRounds (default to 0 = unlimited)
-            Object numRoundsObj = regionData.get("numRounds");
-            this.maxRounds = numRoundsObj != null ? ((Number) numRoundsObj).intValue() : 0;
+            Object minPlayersObj = regionData.get("minPlayers");
+            if (minPlayersObj instanceof Number) {
+                this.minPlayers = ((Number) minPlayersObj).intValue();
+            }
         }
     }
 
     public void start() {
+        start(false);
+    }
+
+    public void start(boolean skipWaiting) {
         if (isActive) {
             BlockParty.getInstance().errorLog("Game session for " + regionName + " is already active");
             return;
@@ -93,18 +110,22 @@ public class GameSession {
 
         isActive = true;
         roundNumber = 0;
-        int prepTime = ConfigManager.getPreparationTime();
+        roundsStarted = false;
+        waitingSecondsRemaining = ConfigManager.getWaitingForPlayersTime();
+        enforceMinPlayers = !skipWaiting;
         BlockParty.getInstance().debugLog("Starting game session for region: " + regionName);
 
         // Snapshot all participants so stats include eliminated/offline players too.
         matchParticipants.clear();
         matchParticipantNames.clear();
+        originalHotbars.clear();
         for (UUID playerId : GameManager.getPlayersInRegion(regionName)) {
             matchParticipants.add(playerId);
             String trackedName = GameManager.getPlayerName(playerId);
             Player onlinePlayer = Bukkit.getPlayer(playerId);
             if (onlinePlayer != null) {
                 trackedName = onlinePlayer.getName();
+                originalHotbars.put(playerId, snapshotHotbar(onlinePlayer));
             }
             if (trackedName != null) {
                 matchParticipantNames.put(playerId, trackedName);
@@ -115,14 +136,183 @@ public class GameSession {
         if (ConfigManager.isBlockRestorationEnabled()) {
             saveBlocks();
         }
-        
+
+        if (skipWaiting) {
+            beginPreparationPhase();
+        } else {
+            startWaitingPhase();
+        }
+    }
+
+    public void handlePlayerCountChanged() {
+        if (!isActive) {
+            return;
+        }
+
+        int currentPlayers = GameManager.getPlayerCountInRegion(regionName);
+
+        if (!roundsStarted) {
+            if (enforceMinPlayers && currentPlayers < minPlayers) {
+                resetPregameCountdown();
+            } else if (enforceMinPlayers && waitingTask == null && prepTask == null) {
+                startWaitingPhase();
+            }
+            return;
+        }
+
+        if (currentPlayers <= 1) {
+            endGame();
+        }
+    }
+
+    private void startWaitingPhase() {
+        cancelWaitingTask();
+        cancelPrepTask();
+        waitingSecondsRemaining = ConfigManager.getWaitingForPlayersTime();
+
+        waitingTask = Bukkit.getScheduler().runTaskTimer(BlockParty.getInstance(), () -> {
+            if (!isActive) {
+                cancelWaitingTask();
+                return;
+            }
+
+            int currentPlayers = GameManager.getPlayerCountInRegion(regionName);
+            if (currentPlayers < minPlayers) {
+                resetPregameCountdown();
+                return;
+            }
+
+            sendWaitingActionBar(waitingSecondsRemaining);
+
+            if (waitingSecondsRemaining <= 0) {
+                cancelWaitingTask();
+                beginPreparationPhase();
+                return;
+            }
+
+            waitingSecondsRemaining--;
+        }, 0L, 20L);
+    }
+
+    private void beginPreparationPhase() {
+        if (!isActive) {
+            return;
+        }
+
+        int currentPlayers = GameManager.getPlayerCountInRegion(regionName);
+        if (enforceMinPlayers && currentPlayers < minPlayers) {
+            resetPregameCountdown();
+            return;
+        }
+
+        int prepTime = ConfigManager.getPreparationTime();
         broadcastToPlayers(ChatColor.GOLD + ConfigManager.getGameStartMessage().replace("%time%", String.valueOf(prepTime)));
 
         long prepDelayTicks = Math.max(0, prepTime) * 20L;
         if (prepDelayTicks == 0L) {
             startNextRound();
-        } else {
-            gameTask = Bukkit.getScheduler().runTaskLater(BlockParty.getInstance(), this::startNextRound, prepDelayTicks);
+            return;
+        }
+
+        prepTask = Bukkit.getScheduler().runTaskLater(BlockParty.getInstance(), () -> {
+            if (!isActive) {
+                return;
+            }
+            if (GameManager.getPlayerCountInRegion(regionName) < minPlayers) {
+                resetPregameCountdown();
+                return;
+            }
+            startNextRound();
+        }, prepDelayTicks);
+    }
+
+    private void resetPregameCountdown() {
+        cancelWaitingTask();
+        cancelPrepTask();
+        waitingSecondsRemaining = ConfigManager.getWaitingForPlayersTime();
+        sendWaitingPausedActionBar();
+    }
+
+    private void cancelWaitingTask() {
+        if (waitingTask != null) {
+            waitingTask.cancel();
+            waitingTask = null;
+        }
+    }
+
+    private void cancelPrepTask() {
+        if (prepTask != null) {
+            prepTask.cancel();
+            prepTask = null;
+        }
+    }
+
+    private void cancelEliminationTask() {
+        if (eliminationTask != null) {
+            eliminationTask.cancel();
+            eliminationTask = null;
+        }
+    }
+
+    private ItemStack[] snapshotHotbar(Player player) {
+        ItemStack[] snapshot = new ItemStack[9];
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack item = player.getInventory().getItem(slot);
+            snapshot[slot] = item == null ? null : item.clone();
+        }
+        return snapshot;
+    }
+
+    private void restoreHotbar(UUID playerId) {
+        ItemStack[] snapshot = originalHotbars.get(playerId);
+        if (snapshot == null) {
+            return;
+        }
+
+        Player player = Bukkit.getPlayer(playerId);
+        if (player == null || !player.isOnline()) {
+            pendingHotbarRestores.put(playerId, snapshot);
+            return;
+        }
+
+        applyHotbarSnapshot(player, snapshot);
+    }
+
+    private static void applyHotbarSnapshot(Player player, ItemStack[] snapshot) {
+        for (int slot = 0; slot < snapshot.length; slot++) {
+            player.getInventory().setItem(slot, snapshot[slot] == null ? null : snapshot[slot].clone());
+        }
+        player.updateInventory();
+    }
+
+    public static void restorePendingHotbar(Player player) {
+        ItemStack[] snapshot = pendingHotbarRestores.remove(player.getUniqueId());
+        if (snapshot != null) {
+            applyHotbarSnapshot(player, snapshot);
+        }
+    }
+
+    public static void clearPendingHotbarRestores() {
+        pendingHotbarRestores.clear();
+    }
+
+    private void sendWaitingActionBar(int secondsRemaining) {
+        String message = ChatColor.YELLOW + ConfigManager.getWaitingForPlayersMessage().replace("%time%", String.valueOf(secondsRemaining));
+        for (UUID playerId : GameManager.getPlayersInRegion(regionName)) {
+            Player player = Bukkit.getPlayer(playerId);
+            if (player != null && player.isOnline()) {
+                player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(message));
+            }
+        }
+    }
+
+    private void sendWaitingPausedActionBar() {
+        String message = ChatColor.YELLOW + ConfigManager.getWaitingForMorePlayersMessage();
+        for (UUID playerId : GameManager.getPlayersInRegion(regionName)) {
+            Player player = Bukkit.getPlayer(playerId);
+            if (player != null && player.isOnline()) {
+                player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(message));
+            }
         }
     }
 
@@ -133,18 +323,15 @@ public class GameSession {
         savedBlocks = new HashMap<>();
         int minX = Math.min(pos1x, pos2x);
         int maxX = Math.max(pos1x, pos2x);
-        int minY = Math.min(pos1y, pos2y);
-        int maxY = Math.max(pos1y, pos2y);
+        int y = pos1y; // Floor is at a single Y level
         int minZ = Math.min(pos1z, pos2z);
         int maxZ = Math.max(pos1z, pos2z);
 
         for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    Block block = world.getBlockAt(x, y, z);
-                    String key = x + "," + y + "," + z;
-                    savedBlocks.put(key, block.getType().ordinal());
-                }
+            for (int z = minZ; z <= maxZ; z++) {
+                Block block = world.getBlockAt(x, y, z);
+                String key = x + "," + y + "," + z;
+                savedBlocks.put(key, block.getType().ordinal());
             }
         }
         BlockParty.getInstance().debugLog("Saved " + savedBlocks.size() + " blocks for region: " + regionName);
@@ -163,7 +350,7 @@ public class GameSession {
             int x = Integer.parseInt(coords[0]);
             int y = Integer.parseInt(coords[1]);
             int z = Integer.parseInt(coords[2]);
-            
+
             Material material = Material.values()[savedBlocks.get(key)];
             world.getBlockAt(x, y, z).setType(material, false);
         }
@@ -175,23 +362,20 @@ public class GameSession {
             return;
         }
 
-        // Check if max rounds reached
-        if (maxRounds > 0 && roundNumber >= maxRounds) {
-            broadcastToPlayers(ChatColor.YELLOW + "Maximum rounds reached!");
-            List<String> survivors = GameManager.getPlayerNamesInRegion(regionName);
-            if (survivors.size() == 1) {
-                endGame(survivors.get(0), false);
-            } else {
-                if (!survivors.isEmpty()) {
-                    broadcastToPlayers(ChatColor.YELLOW + "Round limit tie between: " + String.join(", ", survivors));
-                }
-                endGame(null, true);
-            }
-            return;
-        }
+        roundsStarted = true;
+        cancelWaitingTask();
+        cancelPrepTask();
 
         roundNumber++;
-        String selectedBlock = blockTypes.get(RANDOM.nextInt(blockTypes.size()));
+        String selectedBlockName = blockTypes.get(RANDOM.nextInt(blockTypes.size()));
+        Material selectedMaterial = MaterialUtils.fromFriendlyName(selectedBlockName);
+
+        if (selectedMaterial == null) {
+            BlockParty.getInstance().errorLog("Invalid material name in region file: " + selectedBlockName);
+            broadcastToPlayers(ChatColor.RED + "Error: Invalid block in region config. Game cannot continue.");
+            endGame();
+            return;
+        }
 
         // Calculate time remaining (decreases each round) - using config values
         int initialTime = ConfigManager.getInitialRoundTime();
@@ -200,20 +384,85 @@ public class GameSession {
         int timeRemaining = Math.max(minimumTime, initialTime - (roundNumber * decreasePerRound));
 
         broadcastToPlayers(ChatColor.YELLOW + ConfigManager.getRoundAnnouncementMessage().replace("%round%", String.valueOf(roundNumber)));
-        broadcastToPlayers(ChatColor.AQUA + ConfigManager.getSelectedBlockMessage().replace("%block%", selectedBlock));
+        broadcastToPlayers(ChatColor.AQUA + ConfigManager.getSelectedBlockMessage().replace("%block%", selectedBlockName));
         broadcastToPlayers(ChatColor.YELLOW + ConfigManager.getTimeWarningMessage()
-                .replace("%block%", selectedBlock)
+                .replace("%block%", selectedBlockName)
                 .replace("%time%", String.valueOf(timeRemaining)));
         broadcastToPlayers(ChatColor.GRAY + "(Time gets shorter each round)");
 
+        fillPlayersHotbar(selectedMaterial);
+
+        // Change the floor to a random assortment of blocks from the list
+        setFloorBlocks();
+
+
         // Schedule the block removal
         gameTask = Bukkit.getScheduler().runTaskLater(BlockParty.getInstance(), () -> {
-            removeNonSelectedBlocks(selectedBlock);
-            checkPlayersOnBlock(selectedBlock);
+            removeNonSelectedBlocks(selectedMaterial);
+            scheduleEliminationCheck();
         }, timeRemaining * 20L);
     }
 
-    private void removeNonSelectedBlocks(String selectedBlockType) {
+    private void scheduleEliminationCheck() {
+        cancelEliminationTask();
+        eliminationTask = Bukkit.getScheduler().runTaskLater(BlockParty.getInstance(), () -> {
+            if (isActive) {
+                checkPlayersBelowFloor();
+            }
+        }, Math.max(0, ConfigManager.getEliminationCheckDelay()) * 20L);
+    }
+
+    private void setFloorBlocks() {
+        org.bukkit.World world = Bukkit.getWorld(worldName);
+        if (world == null) return;
+
+        int minX = Math.min(pos1x, pos2x);
+        int maxX = Math.max(pos1x, pos2x);
+        int y = pos1y; // Floor is at a single Y level
+        int minZ = Math.min(pos1z, pos2z);
+        int maxZ = Math.max(pos1z, pos2z);
+
+        List<Material> materials = new ArrayList<>();
+        for (String blockName : blockTypes) {
+            Material mat = MaterialUtils.fromFriendlyName(blockName);
+            if (mat != null) {
+                materials.add(mat);
+            }
+        }
+
+        if (materials.isEmpty()) {
+            BlockParty.getInstance().errorLog("No valid materials found for region " + regionName);
+            return;
+        }
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                Material randomMaterial = materials.get(RANDOM.nextInt(materials.size()));
+                world.getBlockAt(x, y, z).setType(randomMaterial, false);
+            }
+        }
+    }
+
+
+    private void fillPlayersHotbar(Material selectedMaterial) {
+        for (UUID playerId : GameManager.getPlayersInRegion(regionName)) {
+            Player player = Bukkit.getPlayer(playerId);
+            if (player == null || !player.isOnline()) {
+                continue;
+            }
+            fillPlayerHotbar(player, selectedMaterial);
+        }
+    }
+
+    private void fillPlayerHotbar(Player player, Material selectedMaterial) {
+        ItemStack stack = new ItemStack(selectedMaterial, 64);
+        for (int slot = 0; slot < 9; slot++) {
+            player.getInventory().setItem(slot, stack.clone());
+        }
+    }
+
+
+    private void removeNonSelectedBlocks(Material selectedMaterial) {
         if (worldName == null) {
             BlockParty.getInstance().errorLog("World name is null for region " + regionName);
             return;
@@ -225,29 +474,18 @@ public class GameSession {
             return;
         }
 
-        Material selectedMaterial;
-        try {
-            selectedMaterial = Material.valueOf(selectedBlockType);
-        } catch (IllegalArgumentException e) {
-            BlockParty.getInstance().errorLog("Invalid material: " + selectedBlockType);
-            return;
-        }
-
         int minX = Math.min(pos1x, pos2x);
         int maxX = Math.max(pos1x, pos2x);
-        int minY = Math.min(pos1y, pos2y);
-        int maxY = Math.max(pos1y, pos2y);
+        int y = pos1y; // Floor is at a single Y level
         int minZ = Math.min(pos1z, pos2z);
         int maxZ = Math.max(pos1z, pos2z);
 
         // Remove all blocks that are not the selected type
         for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    Block block = world.getBlockAt(x, y, z);
-                    if (block.getType() != selectedMaterial && block.getType() != Material.AIR) {
-                        block.setType(Material.AIR);
-                    }
+            for (int z = minZ; z <= maxZ; z++) {
+                Block block = world.getBlockAt(x, y, z);
+                if (block.getType() != selectedMaterial) {
+                    block.setType(Material.AIR);
                 }
             }
         }
@@ -255,18 +493,11 @@ public class GameSession {
         broadcastToPlayers(ChatColor.RED + ConfigManager.getBlocksRemovedMessage());
     }
 
-    private void checkPlayersOnBlock(String selectedBlockType) {
-        Material selectedMaterial;
-        try {
-            selectedMaterial = Material.valueOf(selectedBlockType);
-        } catch (IllegalArgumentException e) {
-            BlockParty.getInstance().errorLog("Invalid material: " + selectedBlockType);
-            return;
-        }
-
+    private void checkPlayersBelowFloor() {
         org.bukkit.World world = Bukkit.getWorld(worldName);
         if (world == null) return;
 
+        int floorY = Math.min(pos1y, pos2y);
         List<UUID> playersInRegion = new ArrayList<>(GameManager.getPlayersInRegion(regionName));
         List<String> eliminated = new ArrayList<>();
 
@@ -278,9 +509,8 @@ public class GameSession {
                 continue;
             }
 
-            Block blockBelow = player.getLocation().subtract(0, 1, 0).getBlock();
-            if (blockBelow.getType() != selectedMaterial) {
-                // Player is not on the selected block - eliminate
+            if (player.getLocation().getY() < floorY) {
+                // Player fell below the floor Y level - eliminate
                 eliminated.add(player.getName());
                 // Record the elimination if enabled in config
                 if (ConfigManager.isTrackEliminationsEnabled()) {
@@ -310,36 +540,26 @@ public class GameSession {
     }
 
     private void endGame() {
-        endGame(null, false);
-    }
-
-    private void endGame(String forcedWinner, boolean tiedByRoundLimit) {
         isActive = false;
+        roundsStarted = false;
+        cancelWaitingTask();
+        cancelPrepTask();
+        cancelEliminationTask();
         String winner = "Nobody";
         int remainingPlayers = GameManager.getPlayerCountInRegion(regionName);
 
-        if (forcedWinner != null) {
-            winner = forcedWinner;
-            broadcastToPlayers(ChatColor.GOLD + ConfigManager.getGameOverMessage());
-            broadcastToPlayers(ChatColor.GREEN + ConfigManager.getWinnerMessage().replace("%player%", winner));
-            if (ConfigManager.isStatsEnabled()) {
-                StatsManager.recordGameWon(winner);
-            }
-        } else if (remainingPlayers == 1) {
+        if (remainingPlayers == 1) {
             List<String> winners = GameManager.getPlayerNamesInRegion(regionName);
             if (!winners.isEmpty()) {
                 winner = winners.get(0);
             }
             broadcastToPlayers(ChatColor.GOLD + ConfigManager.getGameOverMessage());
             broadcastToPlayers(ChatColor.GREEN + ConfigManager.getWinnerMessage().replace("%player%", winner));
-            
+
             // Record the win if enabled in config
             if (ConfigManager.isStatsEnabled()) {
                 StatsManager.recordGameWon(winner);
             }
-        } else if (tiedByRoundLimit) {
-            broadcastToPlayers(ChatColor.GOLD + ConfigManager.getGameOverMessage());
-            broadcastToPlayers(ChatColor.YELLOW + "Round limit reached with multiple survivors. No winner this game.");
         } else {
             broadcastToPlayers(ChatColor.GOLD + ConfigManager.getGameOverMessage());
             broadcastToPlayers(ChatColor.YELLOW + "All players eliminated!");
@@ -361,56 +581,35 @@ public class GameSession {
             }
         }
 
-        if (gameTask != null) {
-            gameTask.cancel();
-        }
-
-        // Restore blocks if enabled
+        // Restore blocks to original state
         restoreBlocks();
 
-        GameManager.finishGameSession(regionName);
-        GameManager.clearRegion(regionName);
-        BlockParty.getInstance().debugLog("Game session ended for region: " + regionName + ", Winner: " + winner);
-    }
-
-    private void broadcastToPlayers(String message) {
-        List<String> playerNames = GameManager.getPlayerNamesInRegion(regionName);
-        for (String playerName : playerNames) {
-            Player player = Bukkit.getPlayer(playerName);
-            if (player != null) {
-                player.sendMessage(message);
-            }
+        for (UUID playerId : matchParticipants) {
+            restoreHotbar(playerId);
         }
+ 
+         // Fully tear down the session and remove all players from the region state.
+         GameManager.finishGameSession(regionName);
+         GameManager.clearRegion(regionName);
+         originalHotbars.clear();
+ 
+         if (gameTask != null) {
+             gameTask.cancel();
+             gameTask = null;
+         }
     }
 
     public void stop() {
-        if (gameTask != null) {
-            gameTask.cancel();
-        }
         broadcastToPlayers(ChatColor.RED + "Game stopped by administrator.");
         endGame();
     }
 
-    public String getRegionName() {
-        return regionName;
-    }
-
-    public boolean isActive() {
-        return isActive;
-    }
-
-    public int getRoundNumber() {
-        return roundNumber;
-    }
-
-    public void registerParticipant(UUID playerId, String playerName) {
-        if (playerId == null) {
-            return;
-        }
-        matchParticipants.add(playerId);
-        if (playerName != null && !playerName.isEmpty()) {
-            matchParticipantNames.put(playerId, playerName);
+    private void broadcastToPlayers(String message) {
+        for (UUID playerId : GameManager.getPlayersInRegion(regionName)) {
+            Player player = Bukkit.getPlayer(playerId);
+            if (player != null && player.isOnline()) {
+                player.sendMessage(message);
+            }
         }
     }
 }
-

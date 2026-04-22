@@ -2,13 +2,17 @@ package me.unprankable.blockparty.commands;
 
 import me.unprankable.blockparty.BlockParty;
 import me.unprankable.blockparty.managers.GameManager;
+import me.unprankable.blockparty.managers.RegionManager;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.util.StringUtil;
 
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class Stop {
@@ -33,18 +37,26 @@ public class Stop {
         List<String> playersInRegion = GameManager.getPlayerNamesInRegion(regionName);
         int playerCount = playersInRegion.size();
 
-        if (playerCount == 0) {
-            sender.sendMessage(ChatColor.YELLOW + "No active game in region '" + regionName + "'.");
-            BlockParty.getInstance().debugLog("Stop command: No players in region " + regionName);
-            return true;
+        if (GameManager.hasActiveSession(regionName)) {
+            // Stop the game session
+            GameManager.stopGameSession(regionName);
+            sender.sendMessage(ChatColor.GREEN + "BlockParty game stopped for region '" + regionName + "'.");
+        } else {
+            GameManager.clearRegion(regionName);
+            sender.sendMessage(ChatColor.YELLOW + "No active game session was running. Cleared region queue for '" + regionName + "'.");
         }
 
-        // Stop the game session
-        GameManager.stopGameSession(regionName);
-
-        sender.sendMessage(ChatColor.GREEN + "BlockParty game stopped for region '" + regionName + "'.");
-        sender.sendMessage(ChatColor.YELLOW + "Players removed: " + String.join(", ", playersInRegion));
-        BlockParty.getInstance().debugLog("BlockParty game stopped for region: " + regionName + " (removed " + playerCount + " players) by " + sender.getName());
+        if (playerCount > 0) {
+            sender.sendMessage(ChatColor.YELLOW + "Players removed: " + String.join(", ", playersInRegion));
+        }
+        BlockParty.getInstance().debugLog("Stop command finished for region: " + regionName + " (removed " + playerCount + " players) by " + sender.getName());
         return true;
+    }
+
+    public static List<String> tabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length == 2) {
+            return StringUtil.copyPartialMatches(args[1], RegionManager.getRegionNames(), new ArrayList<>());
+        }
+        return Collections.emptyList();
     }
 }

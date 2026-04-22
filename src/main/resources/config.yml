@@ -3,10 +3,10 @@
 # Game Settings
 game:
   # Initial time (in seconds) players have to reach the selected block in round 1
-  initial_round_time: 15
+  initial_round_time: 10
   
   # Minimum time (in seconds) - game won't go faster than this
-  minimum_round_time: 3
+  minimum_round_time: 1
   
   # How many seconds to decrease per round (increases difficulty)
   time_decrease_per_round: 1
@@ -16,6 +16,12 @@ game:
   
   # Countdown time (in seconds) before game starts
   preparation_time: 5
+
+  # Waiting time (in seconds) after min players is reached before the round starts
+  waiting_for_players_time: 30
+
+  # Delay (in seconds) after blocks are removed before players are checked for elimination
+  elimination_check_delay: 10
 
 # Default region settings
 regions:
@@ -45,6 +51,12 @@ stats:
 messages:
   # Game start message
   game_start: "BlockParty game starting in %time% seconds!"
+
+  # Waiting for players message
+  waiting_for_players: "Waiting %time% seconds for more players..."
+
+  # Waiting for more players message
+  waiting_for_more_players: "Waiting for more players to join..."
   
   # Round announcement
   round_announcement: "--- Round %round% ---"
@@ -70,7 +82,7 @@ messages:
 # Logging
 logging:
   # Enable debug logging
-  debug: true
+  debug: false
   
   # Log all player actions (join, leave, eliminated)
   log_player_actions: true

@@ -111,11 +111,18 @@ public class GameManager {
      * Start a game session for a region
      */
     public static void startGameSession(String regionName) throws Exception {
+        startGameSession(regionName, false);
+    }
+
+    /**
+     * Start a game session for a region, optionally skipping the pregame wait phase.
+     */
+    public static void startGameSession(String regionName, boolean skipWaiting) throws Exception {
         if (activeSessions.containsKey(regionName)) {
             throw new IllegalStateException("Game session already active for region: " + regionName);
         }
         GameSession session = new GameSession(regionName);
-        session.start();
+        session.start(skipWaiting);
         activeSessions.put(regionName, session);
     }
 
@@ -127,6 +134,22 @@ public class GameManager {
         if (session != null) {
             session.stop();
         }
+    }
+
+    /**
+     * Stop every active game session and return how many were stopped.
+     */
+    public static int stopAllGameSessions() {
+        List<String> regionNames = new ArrayList<>(activeSessions.keySet());
+        int stopped = 0;
+        for (String regionName : regionNames) {
+            GameSession session = activeSessions.remove(regionName);
+            if (session != null) {
+                session.stop();
+                stopped++;
+            }
+        }
+        return stopped;
     }
 
     /**

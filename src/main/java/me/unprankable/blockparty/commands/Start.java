@@ -4,15 +4,19 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import me.unprankable.blockparty.BlockParty;
 import me.unprankable.blockparty.managers.GameManager;
+import me.unprankable.blockparty.managers.RegionManager;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.util.StringUtil;
 
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -73,11 +77,11 @@ public class Start {
             }
 
             try {
-                GameManager.startGameSession(regionName);
+                GameManager.startGameSession(regionName, forceStart);
                 if (forceStart) {
-                    sender.sendMessage(ChatColor.GREEN + "BlockParty game started (forced) for region '" + regionName + "'.");
+                    sender.sendMessage(ChatColor.GREEN + "BlockParty game force-started for region '" + regionName + "'.");
                 } else {
-                    sender.sendMessage(ChatColor.GREEN + "BlockParty game started for region '" + regionName + "'.");
+                    sender.sendMessage(ChatColor.GREEN + "BlockParty game waiting phase started for region '" + regionName + "'.");
                 }
                 sender.sendMessage(ChatColor.YELLOW + "Players: " + String.join(", ", playersInRegion));
                 BlockParty.getInstance().debugLog("BlockParty game started for region: " + regionName + " (players: " + currentPlayers + ") by " + sender.getName());
@@ -94,5 +98,15 @@ public class Start {
             BlockParty.getInstance().errorLog("Failed to read region file for " + regionName + ": " + e.getMessage());
             return false;
         }
+    }
+
+    public static List<String> tabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length == 2) {
+            return StringUtil.copyPartialMatches(args[1], RegionManager.getRegionNames(), new ArrayList<>());
+        }
+        if (args.length == 3) {
+            return StringUtil.copyPartialMatches(args[2], Collections.singletonList("force"), new ArrayList<>());
+        }
+        return Collections.emptyList();
     }
 }

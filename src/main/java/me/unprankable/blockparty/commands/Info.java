@@ -3,15 +3,20 @@ package me.unprankable.blockparty.commands;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import me.unprankable.blockparty.BlockParty;
+import me.unprankable.blockparty.managers.RegionManager;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.util.StringUtil;
 
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 public class Info {
@@ -77,18 +82,7 @@ public class Info {
                 sender.sendMessage(ChatColor.YELLOW + "Minimum Players: " + ChatColor.RESET + "2 (default)");
             }
 
-            // Display numRounds
-            Object numRoundsObj = regionData.get("numRounds");
-            if (numRoundsObj != null) {
-                int numRounds = ((Number) numRoundsObj).intValue();
-                if (numRounds > 0) {
-                    sender.sendMessage(ChatColor.YELLOW + "Maximum Rounds: " + ChatColor.RESET + numRounds);
-                } else {
-                    sender.sendMessage(ChatColor.YELLOW + "Maximum Rounds: " + ChatColor.RESET + "Unlimited");
-                }
-            } else {
-                sender.sendMessage(ChatColor.YELLOW + "Maximum Rounds: " + ChatColor.RESET + "Unlimited");
-            }
+            sender.sendMessage(ChatColor.YELLOW + "End Condition: " + ChatColor.RESET + "Last player standing");
 
             sender.sendMessage(ChatColor.GOLD + "==============================");
             BlockParty.getInstance().debugLog("Info command executed for region: " + regionName + " by " + sender.getName());
@@ -99,5 +93,12 @@ public class Info {
             BlockParty.getInstance().errorLog("Failed to read region file for " + regionName + ": " + e.getMessage());
             return false;
         }
+    }
+
+    public static List<String> tabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length == 2) {
+            return StringUtil.copyPartialMatches(args[1], RegionManager.getRegionNames(), new ArrayList<>());
+        }
+        return Collections.emptyList();
     }
 }

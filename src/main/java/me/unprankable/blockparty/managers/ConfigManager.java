@@ -34,11 +34,11 @@ public class ConfigManager {
 
     // Game Settings
     public static int getInitialRoundTime() {
-        return config.getInt("game.initial_round_time", 15);
+        return config.getInt("game.initial_round_time", 10);
     }
 
     public static int getMinimumRoundTime() {
-        return config.getInt("game.minimum_round_time", 3);
+        return config.getInt("game.minimum_round_time", 1);
     }
 
     public static int getTimeDecreasePerRound() {
@@ -51,6 +51,14 @@ public class ConfigManager {
 
     public static int getPreparationTime() {
         return config.getInt("game.preparation_time", 5);
+    }
+
+    public static int getWaitingForPlayersTime() {
+        return config.getInt("game.waiting_for_players_time", 30);
+    }
+
+    public static int getEliminationCheckDelay() {
+        return config.getInt("game.elimination_check_delay", 10);
     }
 
     // Region Settings
@@ -83,6 +91,14 @@ public class ConfigManager {
     // Messages
     public static String getGameStartMessage() {
         return config.getString("messages.game_start", "BlockParty game starting in %time% seconds!");
+    }
+
+    public static String getWaitingForPlayersMessage() {
+        return config.getString("messages.waiting_for_players", "Waiting %time% seconds for more players...");
+    }
+
+    public static String getWaitingForMorePlayersMessage() {
+        return config.getString("messages.waiting_for_more_players", "Waiting for more players to join...");
     }
 
     public static String getRoundAnnouncementMessage() {
