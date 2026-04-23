@@ -12,6 +12,67 @@ commands:
     description: "Create, delete and manage blockparty games"
     usage: "/blockparty <create|delete|edit <region> <option> <value>|help|info|join|leave|list|reload|start|stop|stats>"
     aliases: [ bp ]
-
-
-
+permissions:
+  # Individual commands
+  blockparty.create:
+    description: Allows creating regions
+    default: op
+  blockparty.delete:
+    description: Allows deleting regions
+    default: op
+  blockparty.edit:
+    description: Allows editing region options
+    default: op
+  blockparty.help:
+    description: Allows running the help command
+    default: true
+  blockparty.info:
+    description: Allows checking region information
+    default: op
+  blockparty.join:
+    description: Allows joining a block party game
+    default: true
+  blockparty.leave:
+    description: Allows leaving a block party game
+    default: true
+  blockparty.list:
+    description: Allows listing block party regions
+    default: true
+  blockparty.reload:
+    description: Allows reloading the plugin
+    default: op
+  blockparty.start:
+    description: Allows manually starting a block party game
+    default: op
+  blockparty.stats:
+    description: Allows seeing your block party stats
+    default: true
+  blockparty.stats.others:
+    description: Allows seeing other players' block party stats
+    default: op
+  blockparty.stop:
+    description: Allows stopping a block party game
+    default: op
+  # Other perms
+  blockparty.admin:
+    description: Admin perms
+    children:
+      blockparty.create: true
+      blockparty.delete: true
+      blockparty.edit: true
+      blockparty.info: true
+      blockparty.reload: true
+      blockparty.start: true
+      blockparty.stats.others: true
+      blockparty.stop: true
+    default: op
+  blockparty.all:
+    description: All block party perms
+    children:
+      blockparty.admin: true
+      blockparty.help: true
+      blockparty.join: true
+      blockparty.leave: true
+      blockparty.list: true
+      blockparty.stats: true
+    default: op

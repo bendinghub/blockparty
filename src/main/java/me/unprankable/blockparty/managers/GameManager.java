@@ -1,5 +1,9 @@
 package me.unprankable.blockparty.managers;
 
+import me.unprankable.blockparty.events.PlayerJoinRegionEvent;
+import me.unprankable.blockparty.events.PlayerLeaveRegionEvent;
+import org.bukkit.Bukkit;
+
 import java.util.*;
 
 /**
@@ -19,15 +23,44 @@ public class GameManager {
      * Add a player to a region
      */
     public static void addPlayerToRegion(UUID playerId, String playerName, String regionName) {
-        playerRegions.put(playerId, regionName);
-        playerNames.put(playerId, playerName);
-        regionPlayers.computeIfAbsent(regionName, k -> new ArrayList<>()).add(playerId);
+        PlayerJoinRegionEvent event = new PlayerJoinRegionEvent(playerName, playerId, regionName);
+        Bukkit.getPluginManager().callEvent(event);
+        if (!event.isCancelled()) {
+            playerRegions.put(playerId, regionName);
+            playerNames.put(playerId, playerName);
+            regionPlayers.computeIfAbsent(regionName, k -> new ArrayList<>()).add(playerId);
+        }
     }
 
     /**
      * Remove a player from a region
+     * @return false if the {@link PlayerLeaveRegionEvent} was cancelled.
      */
-    public static void removePlayerFromRegion(UUID playerId, String regionName) {
+    public static boolean removePlayerFromRegion(UUID playerId, String regionName) {
+        return removePlayerFromRegion(playerId, regionName, PlayerLeaveRegionEvent.RegionLeaveCause.PLUGIN);
+    }
+    /**
+     * Remove a player from a region
+     * @return false if the {@link PlayerLeaveRegionEvent} was cancelled.
+     */
+    public static boolean removePlayerFromRegion(UUID playerId, String regionName, PlayerLeaveRegionEvent.RegionLeaveCause cause) {
+        if (playerNames.containsKey(playerId)) {
+            PlayerLeaveRegionEvent event = new PlayerLeaveRegionEvent(playerNames.get(playerId), playerId, regionName, cause);
+            Bukkit.getPluginManager().callEvent(event);
+            if (event.isCancelled()) {
+                return false;
+            }
+        }
+        GameSession activeSession = activeSessions.get(regionName);
+        if (activeSession != null) {
+            activeSession.resetPlayerGamemodeIfEliminated(playerId);
+            if (!activeSession.isEliminated(playerId) && ConfigManager.isEliminateOnLeave()) {
+                // Add an elimination to player stats if eliminations are tracked and leaving in a game counts as elimination
+                if (ConfigManager.isTrackEliminationsEnabled() && playerNames.containsKey(playerId)) {
+                    StatsManager.recordElimination(playerNames.get(playerId));
+                }
+            }
+        }
         playerRegions.remove(playerId);
         playerNames.remove(playerId);
         List<UUID> players = regionPlayers.get(regionName);
@@ -37,6 +70,7 @@ public class GameManager {
                 regionPlayers.remove(regionName);
             }
         }
+        return true;
     }
 
     /**
@@ -92,7 +126,7 @@ public class GameManager {
         List<UUID> players = regionPlayers.get(regionName);
         if (players != null) {
             for (UUID playerId : new ArrayList<>(players)) {
-                removePlayerFromRegion(playerId, regionName);
+                removePlayerFromRegion(playerId, regionName, PlayerLeaveRegionEvent.RegionLeaveCause.GAME_END);
             }
         }
     }

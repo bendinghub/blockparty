@@ -3,10 +3,12 @@ package me.unprankable.blockparty.managers;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import me.unprankable.blockparty.BlockParty;
+import me.unprankable.blockparty.events.GameEndEvent;
+import me.unprankable.blockparty.events.PlayerEliminatedEvent;
+import me.unprankable.blockparty.events.PlayerLeaveRegionEvent.RegionLeaveCause;
+import me.unprankable.blockparty.events.RoundStartEvent;
 import me.unprankable.blockparty.utils.MaterialUtils;
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.Material;
+import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -19,15 +21,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 public class GameSession {
     private static final Gson GSON = new GsonBuilder().create();
@@ -56,6 +50,8 @@ public class GameSession {
     private final Map<UUID, ItemStack[]> originalHotbars = new HashMap<>();
     private final Set<UUID> matchParticipants = new LinkedHashSet<>();
     private final Map<UUID, String> matchParticipantNames = new HashMap<>();
+    private final Map<UUID, GameMode> eliminatedPlayerGamemodes = new HashMap<>(); // Map of eliminated players to the game-mode they were in before elimination
+    private final Set<String> eliminatedPlayers = new HashSet<>();
 
     public GameSession(String regionName) throws IOException {
         this.regionName = regionName;
@@ -126,6 +122,14 @@ public class GameSession {
         preservedPatternPaletteSize = 0;
         BlockParty.getInstance().debugLog("Starting game session for region: " + regionName);
 
+        if (skipWaiting) {
+            beginPreparationPhase();
+        } else {
+            startWaitingPhase();
+        }
+    }
+
+    public void savePlayerInfo() {
         // Snapshot all participants so stats include eliminated/offline players too.
         matchParticipants.clear();
         matchParticipantNames.clear();
@@ -142,16 +146,10 @@ public class GameSession {
                 matchParticipantNames.put(playerId, trackedName);
             }
         }
-        
+
         // Save original blocks if restoration is enabled
         if (ConfigManager.isBlockRestorationEnabled()) {
             saveBlocks();
-        }
-
-        if (skipWaiting) {
-            beginPreparationPhase();
-        } else {
-            startWaitingPhase();
         }
     }
 
@@ -171,9 +169,26 @@ public class GameSession {
             return;
         }
 
-        if (currentPlayers <= 1) {
+        if (currentPlayers - eliminatedPlayers.size() <= 1) {
             endGame();
         }
+    }
+
+    public void resetPlayerGamemodeIfEliminated(UUID playerId) {
+        if (eliminatedPlayerGamemodes.containsKey(playerId)) {
+            Player player = Bukkit.getPlayer(playerId);
+            if (player != null) {
+                double midX = (pos1x + pos2x) / 2.0 + 0.5;
+                double midY = (pos1y + pos2y) / 2.0 + 1;
+                double midZ = (pos1z + pos2z) / 2.0 + 0.5;
+                player.teleport(new Location(player.getWorld(), midX, midY, midZ));
+                player.setGameMode(eliminatedPlayerGamemodes.get(playerId));
+            }
+        }
+    }
+
+    public boolean isEliminated(UUID playerId) {
+        return eliminatedPlayerGamemodes.containsKey(playerId);
     }
 
     private void startWaitingPhase() {
@@ -373,19 +388,31 @@ public class GameSession {
             return;
         }
 
+        if (roundNumber == 0) {
+            savePlayerInfo();
+        }
+
         roundsStarted = true;
         cancelWaitingTask();
         cancelPrepTask();
 
         roundNumber++;
-        String selectedBlockName = blockTypes.get(RANDOM.nextInt(blockTypes.size()));
-        Material selectedMaterial = MaterialUtils.fromFriendlyName(selectedBlockName);
 
-        if (selectedMaterial == null) {
+        String selectedBlockName = blockTypes.get(RANDOM.nextInt(blockTypes.size()));
+        Material selectedMaterialFromConfig = MaterialUtils.fromFriendlyName(selectedBlockName);
+
+        if (selectedMaterialFromConfig == null) {
             BlockParty.getInstance().errorLog("Invalid material name in region file: " + selectedBlockName);
             broadcastToPlayers(ChatColor.RED + "Error: Invalid block in region config. Game cannot continue.");
             endGame();
             return;
+        }
+
+        RoundStartEvent event = new RoundStartEvent(roundNumber, regionName, selectedMaterialFromConfig, this);
+        Bukkit.getPluginManager().callEvent(event);
+        Material selectedMaterial = event.getChosenBlock();
+        if (selectedMaterial != selectedMaterialFromConfig) {
+            selectedBlockName = selectedMaterial.name();
         }
 
         // Calculate time remaining (decreases each round) - using config values
@@ -568,22 +595,36 @@ public class GameSession {
         List<String> eliminated = new ArrayList<>();
 
         for (UUID playerId : playersInRegion) {
+            if (eliminatedPlayerGamemodes.containsKey(playerId)) {
+                continue; // Already eliminated
+            }
             Player player = Bukkit.getPlayer(playerId);
             if (player == null) {
-                GameManager.removePlayerFromRegion(playerId, regionName);
+                GameManager.removePlayerFromRegion(playerId, regionName, RegionLeaveCause.DISCONNECT);
                 eliminated.add("(disconnected)");
                 continue;
             }
 
             if (player.getLocation().getY() < floorY) {
                 // Player fell below the floor Y level - eliminate
-                eliminated.add(player.getName());
-                // Record the elimination if enabled in config
-                if (ConfigManager.isTrackEliminationsEnabled()) {
-                    StatsManager.recordElimination(player.getName());
+                // Check PlayerEliminatedEvent first
+                PlayerEliminatedEvent event = new PlayerEliminatedEvent(player, regionName, this);
+                Bukkit.getPluginManager().callEvent(event);
+                if (!event.isCancelled()) {
+                    eliminated.add(player.getName());
+                    // Record the elimination if enabled in config
+                    if (ConfigManager.isTrackEliminationsEnabled()) {
+                        StatsManager.recordElimination(player.getName());
+                    }
+                    // Eliminate the player
+                    eliminatedPlayerGamemodes.put(playerId, player.getGameMode());
+                    eliminatedPlayers.add(player.getName());
+                    double midX = (pos1x + pos2x) / 2.0 + 0.5;
+                    double midY = (pos1y + pos2y) / 2.0 + 1;
+                    double midZ = (pos1z + pos2z) / 2.0 + 0.5;
+                    player.teleport(new Location(player.getWorld(), midX, midY, midZ));
+                    player.setGameMode(GameMode.SPECTATOR);
                 }
-                GameManager.removePlayerFromRegion(playerId, regionName);
-                player.setHealth(0); // Eliminate the player
             }
         }
 
@@ -592,7 +633,7 @@ public class GameSession {
         }
 
         // Check if game is over
-        int remainingPlayers = GameManager.getPlayerCountInRegion(regionName);
+        int remainingPlayers = GameManager.getPlayerCountInRegion(regionName) - eliminatedPlayers.size();
         if (remainingPlayers == 1) {
             endGame();
         } else if (remainingPlayers > 0) {
@@ -612,19 +653,26 @@ public class GameSession {
         cancelPrepTask();
         cancelEliminationTask();
         String winner = "Nobody";
-        int remainingPlayers = GameManager.getPlayerCountInRegion(regionName);
+        boolean hasWinner = false;
+        int remainingPlayers = GameManager.getPlayerCountInRegion(regionName) - eliminatedPlayers.size();
 
         if (remainingPlayers == 1) {
             List<String> winners = GameManager.getPlayerNamesInRegion(regionName);
+            winners.removeAll(eliminatedPlayers);
             if (!winners.isEmpty()) {
                 winner = winners.get(0);
+                hasWinner = true;
             }
+        }
+        GameEndEvent event = new GameEndEvent(winner, hasWinner, regionName, this);
+        Bukkit.getPluginManager().callEvent(event);
+        if (event.hasWinner()) {
             broadcastToPlayers(ChatColor.GOLD + ConfigManager.getGameOverMessage());
-            broadcastToPlayers(ChatColor.GREEN + ConfigManager.getWinnerMessage().replace("%player%", winner));
+            broadcastToPlayers(ChatColor.GREEN + ConfigManager.getWinnerMessage().replace("%player%", event.getWinner()));
 
             // Record the win if enabled in config
             if (ConfigManager.isStatsEnabled()) {
-                StatsManager.recordGameWon(winner);
+                StatsManager.recordGameWon(event.getWinner());
             }
         } else {
             broadcastToPlayers(ChatColor.GOLD + ConfigManager.getGameOverMessage());
@@ -652,6 +700,7 @@ public class GameSession {
 
         for (UUID playerId : matchParticipants) {
             restoreHotbar(playerId);
+            resetPlayerGamemodeIfEliminated(playerId);
         }
  
          // Fully tear down the session and remove all players from the region state.

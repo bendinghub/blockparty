@@ -11,6 +11,7 @@ import me.unprankable.blockparty.commands.Reload;
 import me.unprankable.blockparty.commands.Start;
 import me.unprankable.blockparty.commands.Stats;
 import me.unprankable.blockparty.commands.Stop;
+import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -34,6 +35,10 @@ public class commandExecutor implements CommandExecutor, TabCompleter {
         if(args.length == 0){
             return false;
         }
+        if (SUBCOMMANDS.contains(args[0].toLowerCase()) && !sender.hasPermission("blockparty." + args[0].toLowerCase())) {
+            sender.sendMessage(ChatColor.RED + "No permission");
+            return true;
+        }
         switch(args[0].toLowerCase()){
             case "create" -> Create.execute(sender, command, label, args);
             case "delete" -> Delete.execute(sender, command, label, args);
@@ -47,7 +52,13 @@ public class commandExecutor implements CommandExecutor, TabCompleter {
             case "stop" -> Stop.execute(sender, command, label, args);
             case "stats" -> Stats.execute(sender, command, label, args);
             case "help" -> Help.execute(sender, command, label, args);
-            default -> Help.execute(sender, command, label, args);
+            default -> {
+                if (!sender.hasPermission("blockparty.help")) {
+                    sender.sendMessage(ChatColor.RED + "Unknown command, no permission to see help");
+                    return true;
+                }
+                Help.execute(sender, command, label, args);
+            }
         }
         return true;
     }
@@ -56,22 +67,24 @@ public class commandExecutor implements CommandExecutor, TabCompleter {
     public java.util.List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length <= 1) {
             String input = args.length == 0 ? "" : args[0];
-            return StringUtil.copyPartialMatches(input, SUBCOMMANDS, new ArrayList<>());
+            return StringUtil.copyPartialMatches(input, SUBCOMMANDS.stream().filter(cmd -> sender.hasPermission("blockparty." + cmd)).toList(), new ArrayList<>());
         }
 
         String subcommand = args[0].toLowerCase();
-        if (subcommand.equals("create")) return Create.tabComplete(sender, command, alias, args);
-        if (subcommand.equals("delete")) return Delete.tabComplete(sender, command, alias, args);
-        if (subcommand.equals("edit")) return Edit.tabComplete(sender, command, alias, args);
-        if (subcommand.equals("info")) return Info.tabComplete(sender, command, alias, args);
-        if (subcommand.equals("join")) return Join.tabComplete(sender, command, alias, args);
-        if (subcommand.equals("leave")) return Leave.tabComplete(sender, command, alias, args);
-        if (subcommand.equals("list")) return me.unprankable.blockparty.commands.List.tabComplete(sender, command, alias, args);
-        if (subcommand.equals("reload")) return Reload.tabComplete(sender, command, alias, args);
-        if (subcommand.equals("start")) return Start.tabComplete(sender, command, alias, args);
-        if (subcommand.equals("stop")) return Stop.tabComplete(sender, command, alias, args);
-        if (subcommand.equals("stats")) return Stats.tabComplete(sender, command, alias, args);
-        if (subcommand.equals("help")) return Help.tabComplete(sender, command, alias, args);
+        if (sender.hasPermission("blockparty." + subcommand)) {
+            if (subcommand.equals("create")) return Create.tabComplete(sender, command, alias, args);
+            if (subcommand.equals("delete")) return Delete.tabComplete(sender, command, alias, args);
+            if (subcommand.equals("edit")) return Edit.tabComplete(sender, command, alias, args);
+            if (subcommand.equals("info")) return Info.tabComplete(sender, command, alias, args);
+            if (subcommand.equals("join")) return Join.tabComplete(sender, command, alias, args);
+            if (subcommand.equals("leave")) return Leave.tabComplete(sender, command, alias, args);
+            if (subcommand.equals("list")) return me.unprankable.blockparty.commands.List.tabComplete(sender, command, alias, args);
+            if (subcommand.equals("reload")) return Reload.tabComplete(sender, command, alias, args);
+            if (subcommand.equals("start")) return Start.tabComplete(sender, command, alias, args);
+            if (subcommand.equals("stop")) return Stop.tabComplete(sender, command, alias, args);
+            if (subcommand.equals("stats")) return Stats.tabComplete(sender, command, alias, args);
+            if (subcommand.equals("help")) return Help.tabComplete(sender, command, alias, args);
+        }
         return Collections.emptyList();
     }
 }

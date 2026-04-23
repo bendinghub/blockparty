@@ -40,6 +40,14 @@
             </goals>
           </execution>
         </executions>
+        <configuration>
+          <relocations>
+            <relocation>
+              <pattern>com.zaxxer.hikari</pattern>
+              <shadedPattern>me.unprankable.blockparty.libs.com.zaxxer.hikari</shadedPattern>
+            </relocation>
+          </relocations>
+        </configuration>
       </plugin>
     </plugins>
   </build>

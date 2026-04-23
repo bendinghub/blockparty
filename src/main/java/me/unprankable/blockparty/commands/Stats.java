@@ -23,6 +23,10 @@ public class Stats {
         }
 
         String playerName = args[1];
+        if (!sender.hasPermission("blockparty.stats.others") && !playerName.equalsIgnoreCase(sender.getName())) {
+            sender.sendMessage(ChatColor.RED + "You don't have permission to view other players' stats");
+            return true;
+        }
 
         // Get player stats from database
         Map<String, Object> stats = StatsManager.getPlayerStats(playerName);
@@ -75,6 +79,9 @@ public class Stats {
 
     public static List<String> tabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 2) {
+            if (!sender.hasPermission("blockparty.stats.others")) {
+                return sender.getName().startsWith(args[1]) ? Collections.singletonList(sender.getName()) : Collections.emptyList();
+            }
             List<String> playerNames = new ArrayList<>();
             for (Player player : Bukkit.getOnlinePlayers()) {
                 playerNames.add(player.getName());

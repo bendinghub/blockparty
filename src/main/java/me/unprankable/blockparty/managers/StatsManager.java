@@ -1,5 +1,7 @@
 package me.unprankable.blockparty.managers;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import me.unprankable.blockparty.BlockParty;
 
 import java.sql.*;
@@ -7,25 +9,82 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class StatsManager {
-    private static Connection connection;
-    private static final String DATABASE_NAME = "blockparty_stats.db";
+    private static Connection sqliteConnection;
+    private static HikariDataSource mysqlDataSource;
 
     public static void initialize() {
         try {
-            String dbPath = BlockParty.getInstance().getDataFolder() + "/" + DATABASE_NAME;
-            connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+            String dbType = ConfigManager.getDatabaseType();
+            switch (dbType) {
+                case "sqlite":
+                    String dbPath = BlockParty.getInstance().getDataFolder() + "/" + ConfigManager.getDatabaseFilename();
+                    sqliteConnection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+                    BlockParty.getInstance().debugLog("StatsManager initialized with database at: " + dbPath);
+                    break;
+                case "mysql":
+                    String dbUrl = ConfigManager.getDatabaseURL();
+                    HikariConfig dbConfig = new HikariConfig();
+                    dbConfig.setJdbcUrl(dbUrl);
+                    dbConfig.setUsername(ConfigManager.getDatabaseUsername());
+                    dbConfig.setPassword(ConfigManager.getDatabasePassword());
+                    dbConfig.setMaximumPoolSize(10);
+                    mysqlDataSource = new HikariDataSource(dbConfig);
+                    BlockParty.getInstance().debugLog("StatsManager initialized with database at: " + dbUrl);
+                    break;
+                default:
+                    BlockParty.getInstance().errorLog("Invalid database type: " + dbType);
+            }
             createTables();
-            BlockParty.getInstance().debugLog("StatsManager initialized with database at: " + dbPath);
         } catch (SQLException e) {
             BlockParty.getInstance().errorLog("Failed to initialize StatsManager: " + e.getMessage());
         }
     }
 
+    /**
+     * Creates a new mysql connection instance if using mysql, otherwise returns null
+     */
+    private static Connection mysql() throws SQLException {
+        if (mysqlDataSource != null) {
+            return mysqlDataSource.getConnection();
+        }
+        return null;
+    }
+    /**
+     * Returns the provided mysql connection if it is not null, otherwise returns the sqlite connection
+     */
+    private static Connection connection(Connection mysql) {
+        if (mysql == null) {
+            return sqliteConnection;
+        }
+        return mysql;
+    }
+
+    /**
+     * Returns the db-type-specific syntax for INSERT OR IGNORE
+     */
+    private static String insertOrIgnore() {
+        if (mysqlDataSource != null) {
+            return "INSERT IGNORE";
+        } else {
+            return "INSERT OR IGNORE";
+        }
+    }
+    /**
+     * Returns the db-type-specific name for the MAX(a, b) function
+     */
+    private static String max() {
+        if (mysqlDataSource != null) {
+            return "GREATEST";
+        } else {
+            return "MAX";
+        }
+    }
+
     private static void createTables() {
-        try (Statement statement = connection.createStatement()) {
+        try (Connection sql = mysql(); Statement statement = connection(sql).createStatement()) {
             statement.execute(
                 "CREATE TABLE IF NOT EXISTS player_stats (" +
-                "  player_name TEXT PRIMARY KEY," +
+                "  player_name VARCHAR(30) PRIMARY KEY," +
                 "  games_played INT DEFAULT 0," +
                 "  games_won INT DEFAULT 0," +
                 "  best_round INT DEFAULT 0," +
@@ -43,15 +102,15 @@ public class StatsManager {
      * Record a game played by a player
      */
     public static void recordGamePlayed(String playerName, int roundReached) {
-        try (Statement statement = connection.createStatement()) {
+        try (Connection sql = mysql(); Statement statement = connection(sql).createStatement()) {
             String escapedName = playerName.replace("'", "''");
             statement.execute(
-                "INSERT OR IGNORE INTO player_stats (player_name) VALUES ('" + escapedName + "')"
+                insertOrIgnore() + " INTO player_stats (player_name) VALUES ('" + escapedName + "')"
             );
             statement.execute(
                 "UPDATE player_stats SET " +
                 "  games_played = games_played + 1," +
-                "  best_round = MAX(best_round, " + roundReached + ")," +
+                "  best_round = " + max() + "(best_round, " + roundReached + ")," +
                 "  last_played = " + System.currentTimeMillis() +
                 " WHERE player_name = '" + escapedName + "'"
             );
@@ -65,10 +124,10 @@ public class StatsManager {
      * Record a game won by a player
      */
     public static void recordGameWon(String playerName) {
-        try (Statement statement = connection.createStatement()) {
+        try (Connection sql = mysql(); Statement statement = connection(sql).createStatement()) {
             String escapedName = playerName.replace("'", "''");
             statement.execute(
-                "INSERT OR IGNORE INTO player_stats (player_name) VALUES ('" + escapedName + "')"
+                insertOrIgnore() + " INTO player_stats (player_name) VALUES ('" + escapedName + "')"
             );
             statement.execute(
                 "UPDATE player_stats SET " +
@@ -86,10 +145,10 @@ public class StatsManager {
      * Record eliminations by a player
      */
     public static void recordElimination(String playerName) {
-        try (Statement statement = connection.createStatement()) {
+        try (Connection sql = mysql(); Statement statement = connection(sql).createStatement()) {
             String escapedName = playerName.replace("'", "''");
             statement.execute(
-                "INSERT OR IGNORE INTO player_stats (player_name) VALUES ('" + escapedName + "')"
+                insertOrIgnore() + " INTO player_stats (player_name) VALUES ('" + escapedName + "')"
             );
             statement.execute(
                 "UPDATE player_stats SET " +
@@ -106,7 +165,7 @@ public class StatsManager {
      */
     public static Map<String, Object> getPlayerStats(String playerName) {
         Map<String, Object> stats = new HashMap<>();
-        try (Statement statement = connection.createStatement()) {
+        try (Connection sql = mysql(); Statement statement = connection(sql).createStatement()) {
             String escapedName = playerName.replace("'", "''");
             ResultSet result = statement.executeQuery(
                 "SELECT * FROM player_stats WHERE player_name = '" + escapedName + "'"
@@ -139,7 +198,7 @@ public class StatsManager {
      */
     public static Map<String, Object> getTopPlayers(int limit) {
         Map<String, Object> topPlayers = new HashMap<>();
-        try (Statement statement = connection.createStatement()) {
+        try (Connection sql = mysql(); Statement statement = connection(sql).createStatement()) {
             ResultSet result = statement.executeQuery(
                 "SELECT player_name, games_won, games_played FROM player_stats " +
                 "ORDER BY games_won DESC LIMIT " + limit
@@ -161,12 +220,15 @@ public class StatsManager {
     }
 
     /**
-     * Close the database connection
+     * Close the database connection()
      */
     public static void close() {
         try {
-            if (connection != null && !connection.isClosed()) {
-                connection.close();
+            if (sqliteConnection != null && !sqliteConnection.isClosed()) {
+                sqliteConnection.close();
+                BlockParty.getInstance().debugLog("Database connection closed");
+            } else if (mysqlDataSource != null && !mysqlDataSource.isClosed()) {
+                mysqlDataSource.close();
                 BlockParty.getInstance().debugLog("Database connection closed");
             }
         } catch (SQLException e) {
@@ -176,7 +238,7 @@ public class StatsManager {
 
     public static boolean isInitialized() {
         try {
-            return connection != null && !connection.isClosed();
+            return (sqliteConnection != null && !sqliteConnection.isClosed()) || (mysqlDataSource != null && !mysqlDataSource.isClosed());
         } catch (SQLException e) {
             return false;
         }

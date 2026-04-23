@@ -1,5 +1,6 @@
 package me.unprankable.blockparty.listeners;
 
+import me.unprankable.blockparty.events.PlayerLeaveRegionEvent.RegionLeaveCause;
 import me.unprankable.blockparty.managers.GameManager;
 import me.unprankable.blockparty.managers.GameSession;
 import org.bukkit.event.EventHandler;
@@ -31,7 +32,7 @@ public class PlayerSessionListener implements Listener {
             return;
         }
 
-        GameManager.removePlayerFromRegion(playerId, regionName);
+        GameManager.removePlayerFromRegion(playerId, regionName, RegionLeaveCause.DISCONNECT);
         GameSession session = GameManager.getGameSession(regionName);
         if (session != null) {
             session.handlePlayerCountChanged();

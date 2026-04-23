@@ -30,11 +30,18 @@ regions:
 
 # Database Settings
 database:
-  # Database type (currently only 'sqlite' is supported)
+  # == sqlite ==
+  # Database type
   type: sqlite
   
   # Database file name (stored in plugins/BlockParty/)
   filename: blockparty_stats.db
+
+  # == mysql ==
+  # type: mysql
+  # url: jdbc:mysql://[host]:[port]/database
+  # username: user
+  # password: blockparty123
 
 # Stats Tracking
 stats:
@@ -43,6 +50,9 @@ stats:
   
   # Track eliminations
   track_eliminations: true
+
+  # Whether leaving during an active game counts as an elimination
+  eliminate_on_leave: false
   
   # Track best rounds
   track_best_rounds: true

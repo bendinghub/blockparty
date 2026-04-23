@@ -75,6 +75,18 @@ public class ConfigManager {
         return config.getString("database.filename", "blockparty_stats.db");
     }
 
+    public static String getDatabaseURL() {
+        return config.getString("database.url", "jdbc:mysql://[host]:[port]/database");
+    }
+
+    public static String getDatabaseUsername() {
+        return config.getString("database.username", "user");
+    }
+
+    public static String getDatabasePassword() {
+        return config.getString("database.password", "blockparty123");
+    }
+
     // Stats Settings
     public static boolean isStatsEnabled() {
         return config.getBoolean("stats.enabled", true);
@@ -82,6 +94,10 @@ public class ConfigManager {
 
     public static boolean isTrackEliminationsEnabled() {
         return config.getBoolean("stats.track_eliminations", true);
+    }
+
+    public static boolean isEliminateOnLeave() {
+        return config.getBoolean("stats.eliminate_on_leave", false);
     }
 
     public static boolean isTrackBestRoundsEnabled() {
