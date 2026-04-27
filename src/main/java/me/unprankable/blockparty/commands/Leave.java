@@ -3,6 +3,7 @@ package me.unprankable.blockparty.commands;
 import me.unprankable.blockparty.BlockParty;
 import me.unprankable.blockparty.events.PlayerLeaveRegionEvent.RegionLeaveCause;
 import me.unprankable.blockparty.managers.GameManager;
+import me.unprankable.blockparty.managers.GameSession;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -32,6 +33,10 @@ public class Leave {
         if (GameManager.removePlayerFromRegion(player.getUniqueId(), currentRegion, RegionLeaveCause.COMMAND)) {
             sender.sendMessage(ChatColor.GREEN + "You left region '" + currentRegion + "'.");
             BlockParty.getInstance().debugLog("Player " + player.getName() + " left region: " + currentRegion);
+            GameSession session = GameManager.getGameSession(currentRegion);
+            if (session != null) {
+                session.handlePlayerCountChanged();
+            }
         }
         return true;
     }

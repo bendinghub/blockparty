@@ -1,5 +1,5 @@
 name: BlockParty
-version: '1.2-SNAPSHOT'
+version: '1.4'
 main: me.unprankable.blockparty.BlockParty
 api-version: '1.21'
 prefix: BlockParty

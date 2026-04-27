@@ -187,6 +187,22 @@ public class GameSession {
         }
     }
 
+    /**
+     * Unmarks a player as eliminated. Doesn't affect stats
+     */
+    public void uneliminate(UUID playerId) {
+        eliminatedPlayerGamemodes.remove(playerId);
+        String playerName = GameManager.getPlayerName(playerId);
+        eliminatedPlayers.remove(playerName);
+    }
+
+    /**
+     * true if rounds have started
+     */
+    public boolean haveRoundsStarted() {
+        return roundsStarted;
+    }
+
     public boolean isEliminated(UUID playerId) {
         return eliminatedPlayerGamemodes.containsKey(playerId);
     }
@@ -289,7 +305,7 @@ public class GameSession {
         return snapshot;
     }
 
-    private void restoreHotbar(UUID playerId) {
+    public void restoreHotbar(UUID playerId) {
         ItemStack[] snapshot = originalHotbars.get(playerId);
         if (snapshot == null) {
             return;
@@ -698,7 +714,7 @@ public class GameSession {
         // Restore blocks to original state
         restoreBlocks();
 
-        for (UUID playerId : matchParticipants) {
+        for (UUID playerId : GameManager.getPlayersInRegion(regionName)) {
             restoreHotbar(playerId);
             resetPlayerGamemodeIfEliminated(playerId);
         }

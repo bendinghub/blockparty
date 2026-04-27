@@ -53,8 +53,10 @@ public class GameManager {
         }
         GameSession activeSession = activeSessions.get(regionName);
         if (activeSession != null) {
+            activeSession.restoreHotbar(playerId);
             activeSession.resetPlayerGamemodeIfEliminated(playerId);
-            if (!activeSession.isEliminated(playerId) && ConfigManager.isEliminateOnLeave()) {
+            activeSession.uneliminate(playerId); // otherwise the player will be counted against the number of active players even though they are not in the game
+            if (!activeSession.isEliminated(playerId) && ConfigManager.isEliminateOnLeave() && activeSession.haveRoundsStarted()) {
                 // Add an elimination to player stats if eliminations are tracked and leaving in a game counts as elimination
                 if (ConfigManager.isTrackEliminationsEnabled() && playerNames.containsKey(playerId)) {
                     StatsManager.recordElimination(playerNames.get(playerId));

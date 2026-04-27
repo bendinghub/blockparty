@@ -4,7 +4,7 @@
   <groupId>me.unprankable</groupId>
   <artifactId>blockparty</artifactId>
   <name>BlockParty</name>
-  <version>1.2-SNAPSHOT</version>
+  <version>1.4</version>
   <url>https://github.com/bendinghub/blockparty</url>
   <scm>
     <connection>scm:git:git://github.com/bendinghub/blockparty.git</connection>
